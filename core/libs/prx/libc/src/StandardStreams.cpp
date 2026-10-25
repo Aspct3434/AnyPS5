@@ -101,6 +101,7 @@ std::int32_t APS5_VABI fgetwc_nid_postfix(FileStream* stream) {
         errno = 22;
         return -1;
     }
+    if (const std::int32_t pushed = stream->TakePushedBack(); pushed != -1) return pushed;
     if (const char16_t low = stream->TakeLowSurrogate(); low != 0) return low;
     const auto invalid = [stream] {
         errno = 86;
@@ -130,16 +131,14 @@ std::int32_t APS5_VABI fgetwc_nid_postfix(FileStream* stream) {
 std::int32_t APS5_VABI ungetwc_nid_postfix(std::int32_t value, FileStream* stream) {
     if (stream && !stream->IsOpen()) { errno = 9; return -1; }
     if (value == -1) return -1;
-    if (value < 0 || value > 255) {
+    GetNativeStream(stream);
+    if (value < 0 || value > 0xffff) {
         errno = 86;
         stream->SetError();
         return -1;
     }
-    auto* native = GetNativeStream(stream);
-    if (!stream->SwitchToReading()) return -1;
-    const int result = std::ungetc(value, native);
-    stream->SyncStatus();
-    return result;
+    if (!stream->SwitchToReading() || !stream->PushBack(static_cast<char16_t>(value))) return -1;
+    return value;
 }
 int APS5_VABI getc_nid_postfix(FileStream* stream) { return fgetc_nid_postfix(stream); }
 int APS5_VABI getc_unlocked_nid_postfix(FileStream* stream) {

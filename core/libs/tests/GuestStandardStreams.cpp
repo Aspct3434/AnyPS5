@@ -318,6 +318,71 @@ static void CheckSupplementaryWideCharacters() {
     }
 }
 
+static void CheckWidePushback() {
+    const auto roundTrip = [](FileStream& stream, std::int32_t expected) {
+        Require(getwc_nid_postfix(&stream) == expected && ungetwc_nid_postfix(expected, &stream) == expected);
+        Require(getwc_nid_postfix(&stream) == expected && ferror_nid_postfix(&stream) == 0);
+    };
+    const char16_t text[] = u"a\u00e9\u20ac\U0001F600\n";
+    FileStream stream(std::tmpfile());
+    Require(fputws_nid_postfix(text, &stream) == 6);
+    rewind_nid_postfix(&stream);
+    for (const std::int32_t expected : {0x61, 0xe9, 0x20ac, 0xd83d, 0xde00, 0x0a}) roundTrip(stream, expected);
+    Require(getwc_nid_postfix(&stream) == -1 && feof_nid_postfix(&stream) != 0);
+    *__error_nid_postfix() = 0;
+    Require(ungetwc_nid_postfix(-1, &stream) == -1 && *__error_nid_postfix() == 0 && ferror_nid_postfix(&stream) == 0);
+    Require(feof_nid_postfix(&stream) != 0 && getwc_nid_postfix(&stream) == -1);
+    Require(ungetwc_nid_postfix(0x20ac, &stream) == 0x20ac && feof_nid_postfix(&stream) == 0);
+    Require(getwc_nid_postfix(&stream) == 0x20ac && getwc_nid_postfix(&stream) == -1 && feof_nid_postfix(&stream) != 0);
+
+    rewind_nid_postfix(&stream);
+    Require(getwc_nid_postfix(&stream) == u'a' && ungetwc_nid_postfix(u'a', &stream) == u'a');
+    char16_t line[8]{};
+    Require(fgetws_nid_postfix(line, 8, &stream) == line && std::u16string_view(line) == std::u16string_view(text));
+    Require(ungetwc_nid_postfix(0xe9, &stream) == 0xe9);
+    rewind_nid_postfix(&stream);
+    Require(getwc_nid_postfix(&stream) == u'a' && ungetwc_nid_postfix(0x20ac, &stream) == 0x20ac);
+    *__error_nid_postfix() = 0;
+    Require(fseeko_nid_postfix(&stream, 0, 3) == -1 && *__error_nid_postfix() == 22 && getwc_nid_postfix(&stream) == 0x20ac);
+    Require(fseeko_nid_postfix(&stream, 6, SEEK_SET) == 0 && getwc_nid_postfix(&stream) == 0xd83d && ungetwc_nid_postfix(0xd83d, &stream) == 0xd83d);
+    Require(fseeko_nid_postfix(&stream, 1, SEEK_SET) == 0 && getwc_nid_postfix(&stream) == 0xe9);
+
+    Require(fseeko_nid_postfix(&stream, 6, SEEK_SET) == 0 && getwc_nid_postfix(&stream) == 0xd83d && getwc_nid_postfix(&stream) == 0xde00);
+    Require(ungetwc_nid_postfix(0xde00, &stream) == 0xde00 && ungetwc_nid_postfix(0xd83d, &stream) == 0xd83d);
+    Require(ungetwc_nid_postfix(u'x', &stream) == -1 && ferror_nid_postfix(&stream) == 0);
+    Require(getwc_nid_postfix(&stream) == 0xd83d && getwc_nid_postfix(&stream) == 0xde00 && getwc_nid_postfix(&stream) == u'\n');
+    for (const std::int32_t invalid : {0x10000, -2}) {
+        *__error_nid_postfix() = 0;
+        Require(ungetwc_nid_postfix(invalid, &stream) == -1 && *__error_nid_postfix() == 86 && ferror_nid_postfix(&stream) != 0);
+        clearerr_nid_postfix(&stream);
+    }
+    Require(getwc_nid_postfix(&stream) == -1);
+    stream.Close();
+
+    FileStream units(std::tmpfile());
+    const std::string_view bytes("\0\xEF\xBF\xBF\xED\xA0\xBD\xED\xB8\x80", 10);
+    Require(fwrite_nid_postfix(bytes.data(), 1, bytes.size(), &units) == bytes.size());
+    rewind_nid_postfix(&units);
+    for (const std::int32_t expected : {0, 0xffff, 0xd83d, 0xde00}) roundTrip(units, expected);
+    units.Close();
+
+    const auto filename = "anyps5-wide-pushback-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    { std::ofstream seed(filename, std::ios::binary); seed << "q"; Require(seed.good()); }
+    FileStream* readOnly = fopen_nid_postfix(filename.c_str(), "r");
+    Require(readOnly != nullptr && getwc_nid_postfix(readOnly) == u'q' && getwc_nid_postfix(readOnly) == -1);
+    Require(fputc_nid_postfix('X', readOnly) == EOF && feof_nid_postfix(readOnly) != 0 && ferror_nid_postfix(readOnly) != 0);
+    Require(ungetwc_nid_postfix(0xe9, readOnly) == 0xe9 && feof_nid_postfix(readOnly) == 0 && ferror_nid_postfix(readOnly) != 0);
+    Require(getwc_nid_postfix(readOnly) == 0xe9 && fclose_nid_postfix(readOnly) == 0);
+    FileStream reopened(std::tmpfile());
+    Require(ungetwc_nid_postfix(u'z', &reopened) == u'z');
+    Require(freopen_nid_postfix(filename.c_str(), "r", &reopened) == &reopened && getwc_nid_postfix(&reopened) == u'q');
+    Require(ungetwc_nid_postfix(u'z', &reopened) == u'z' && reopened.Close() == 0);
+    *__error_nid_postfix() = 0;
+    Require(getwc_nid_postfix(&reopened) == -1 && *__error_nid_postfix() == 9);
+    Require(ungetwc_nid_postfix(u'z', &reopened) == -1 && *__error_nid_postfix() == 9);
+    std::filesystem::remove(filename);
+}
+
 static void CheckRewind() {
     FileStream stream(std::tmpfile());
     Require(fwrite_nid_postfix("ab", 1, 2, &stream) == 2);
@@ -936,6 +1001,7 @@ int main(int argc, char** argv) {
     CheckRewind();
     CheckFgetsSize();
     CheckSupplementaryWideCharacters();
+    CheckWidePushback();
     CheckUnlockedStreams();
     CheckUnlockedStreamLock(false);
     CheckUnlockedStreamLock(true);

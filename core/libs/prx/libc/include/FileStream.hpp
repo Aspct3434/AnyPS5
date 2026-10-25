@@ -71,6 +71,8 @@ class FileStream {
     bool randomDevice = false;
     bool directory = false;
     char16_t lowSurrogate = 0;
+    char16_t pushedBack[2]{};
+    std::size_t pushedBackCount = 0;
 
 public:
     explicit FileStream(std::FILE* handle, bool dynamic = false) : _handle(handle), _dynamic(dynamic) {
@@ -112,7 +114,7 @@ public:
         _handle = nullptr;
         _guest.flags = 0;
         _guest.descriptor = -1;
-        lowSurrogate = 0;
+        DiscardWideInput();
     }
 
     void RestoreHostStandard(std::FILE* stream, int kept) {
@@ -153,7 +155,7 @@ public:
         _guest = {};
         guestError = false;
         randomDevice = false;
-        lowSurrogate = 0;
+        DiscardWideInput();
 #ifdef _WIN32
         std::wstring wideMode;
         for (const char character : std::string_view(mode)) wideMode.push_back(static_cast<unsigned char>(character));
@@ -305,6 +307,27 @@ public:
         lowSurrogate = unit;
     }
 
+    bool PushBack(char16_t unit) {
+        if (pushedBackCount == std::size(pushedBack)) return false;
+        pushedBack[pushedBackCount++] = unit;
+        auto* native = GetHandle();
+        if (std::feof(native) != 0) {
+            guestError = guestError || std::ferror(native) != 0;
+            std::clearerr(native);
+        }
+        SyncStatus();
+        return true;
+    }
+
+    std::int32_t TakePushedBack() {
+        return pushedBackCount == 0 ? -1 : pushedBack[--pushedBackCount];
+    }
+
+    void DiscardWideInput() {
+        lowSurrogate = 0;
+        pushedBackCount = 0;
+    }
+
     int Close() {
         GetHandle();
 #ifdef _WIN32
@@ -314,7 +337,7 @@ public:
         const int result = std::fclose(std::exchange(_handle, nullptr));
         _guest.flags = 0;
         _guest.descriptor = -1;
-        lowSurrogate = 0;
+        DiscardWideInput();
         return result;
     }
 };

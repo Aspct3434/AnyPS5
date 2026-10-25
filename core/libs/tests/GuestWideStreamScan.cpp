@@ -132,7 +132,7 @@ static void CheckWideText() {
     char16_t letters[8]{};
     FileStream* stream = Open("5 ab\xc3\xa9t\xc3\xa9");
     Require(ScanStream(stream, u"%d %l[abc]", &value, letters) == 2 && value == 5 && std::u16string(letters) == u"ab", "a scanset stops at a non-ASCII character");
-    Require(fgetwc_nid_postfix(stream) == 0xe9, "a non-ASCII lookahead goes back as UTF-8");
+    Require(fgetwc_nid_postfix(stream) == 0xe9, "a non-ASCII lookahead goes back to the stream");
     Require(fwscanf_nid_postfix(stream, u"%ls", letters) == 1 && std::u16string(letters) == u"té", "the rest decodes");
     Close(stream);
 
@@ -145,6 +145,20 @@ static void CheckWideText() {
 
     Require(fwscanf_nid_postfix(nullptr, u"%d", &value) == EOF, "null stream");
     Require(vfwscanf_s_nid_postfix(nullptr, u"%d", nullptr) == EOF, "null stream with sizes");
+}
+
+static void CheckLookaheadPushback() {
+    std::int32_t value = 0;
+    FileStream* stream = Open("7\xF0\x9F\x98\x80");
+    Require(ScanStream(stream, u"%d", &value) == 1 && value == 7, "an integer before a character outside the BMP");
+    Require(fgetwc_nid_postfix(stream) == 0xd83d && fgetwc_nid_postfix(stream) == 0xde00, "a high surrogate lookahead goes back ahead of its low surrogate");
+    Close(stream);
+
+    stream = Open("12ab");
+    Require(ScanStream(stream, u"%d", &value) == 1 && value == 12, "an integer before letters");
+    Require(ungetwc_nid_postfix(0x20ac, stream) == 0x20ac, "ungetwc right after fwscanf pushed back its lookahead");
+    Require(fgetwc_nid_postfix(stream) == 0x20ac && fgetwc_nid_postfix(stream) == u'a', "the pushed-back character, then the lookahead");
+    Close(stream);
 }
 
 static void CheckStandardInput() {
@@ -164,6 +178,7 @@ static void CheckStandardInput() {
 int main() {
     CheckConsumption();
     CheckWideText();
+    CheckLookaheadPushback();
     CheckStandardInput();
     return 0;
 }
