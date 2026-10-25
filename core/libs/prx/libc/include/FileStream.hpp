@@ -50,6 +50,7 @@ class FileStream {
     std::FILE* _handle;
     bool _dynamic;
     bool guestError = false;
+    char16_t lowSurrogate = 0;
 
 public:
     explicit FileStream(std::FILE* handle, bool dynamic = false) : _handle(handle), _dynamic(dynamic) {
@@ -84,6 +85,7 @@ public:
         auto* previous = GetHandle();
         _guest = {};
         guestError = false;
+        lowSurrogate = 0;
 #ifdef _WIN32
         std::wstring wideMode;
         for (const char character : std::string_view(mode)) wideMode.push_back(static_cast<unsigned char>(character));
@@ -141,6 +143,14 @@ public:
         SyncStatus();
     }
 
+    char16_t TakeLowSurrogate() {
+        return std::exchange(lowSurrogate, char16_t{0});
+    }
+
+    void SetLowSurrogate(char16_t unit) {
+        lowSurrogate = unit;
+    }
+
     int Close() {
         GetHandle();
 #ifdef _WIN32
@@ -149,6 +159,7 @@ public:
         const int result = std::fclose(std::exchange(_handle, nullptr));
         _guest.flags = 0;
         _guest.descriptor = -1;
+        lowSurrogate = 0;
         return result;
     }
 };
