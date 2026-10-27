@@ -333,14 +333,13 @@ float APS5_VABI asinf_nid_postfix(float x) {
     return hx > 0 ? result : -result;
 }
 float APS5_VABI acosf_nid_postfix(float x) {
-    if (std::isnan(x)) {
-        return std::bit_cast<float>(std::bit_cast<std::uint32_t>(x) | 0x00400000u);
-    }
-    if (std::fabs(x) > 1.0f) {
-        return std::bit_cast<float>(0xffc00000u);
-    }
     constexpr float Pi = 3.1415925026e+00f, Pio2High = 1.5707962513e+00f;
     const std::uint32_t magnitude = std::bit_cast<std::uint32_t>(x) & 0x7fffffffu;
+    if (magnitude > 0x3f800000u) {
+        std::feraiseexcept(FE_INVALID);
+        errno = EDOM;
+        return (x - x) / (x - x);
+    }
     if (magnitude == 0x3f800000u) return std::signbit(x) ? Pi + 2.0f * AcosfPio2Low : 0.0f;
     if (magnitude < 0x3f000000u) {
         if (magnitude <= 0x32800000u) return Pio2High + AcosfPio2Low;

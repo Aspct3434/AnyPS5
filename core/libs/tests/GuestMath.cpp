@@ -432,13 +432,33 @@ struct RestoreFloatingPointState {
 };
 
 static void CheckAcosfErrno() {
-    errno = 0;
-    Require(std::bit_cast<std::uint32_t>(acosf_nid_postfix(2.0f)) == 0xffc00000u);
-    Require(errno == 0);
-    Require(std::bit_cast<std::uint32_t>(acosf_nid_postfix(-2.0f)) == 0xffc00000u);
-    Require(errno == 0);
-    Require(std::bit_cast<std::uint32_t>(acosf_nid_postfix(0.5f)) == 0x3f860a92u);
-    Require(errno == 0);
+    const RestoreFloatingPointState saved;
+    constexpr std::uint32_t domainErrors[][2] = {
+        {0x40000000u, 0xffc00000u}, {0xc0000000u, 0xffc00000u}, {0x3f800001u, 0xffc00000u}, {0xbf800001u, 0xffc00000u},
+        {0x7f7fffffu, 0xffc00000u}, {0x7f800000u, 0xffc00000u}, {0xff800000u, 0xffc00000u}, {0x7fc00000u, 0x7fc00000u},
+        {0xffc00001u, 0xffc00001u}, {0x7f800001u, 0x7fc00001u},
+    };
+    for (const auto& [input, expected] : domainErrors) {
+        std::feclearexcept(FE_ALL_EXCEPT);
+        *__error_nid_postfix() = 0;
+        const std::uint32_t bits = std::bit_cast<std::uint32_t>(acosf_nid_postfix(std::bit_cast<float>(input)));
+        if (bits != expected || *__error_nid_postfix() != EDOM || std::fetestexcept(FE_INVALID) == 0) {
+            std::fprintf(stderr, "Guest acosf failed for %08x: got %08x, errno %d\n", input, bits, *__error_nid_postfix());
+            std::abort();
+        }
+    }
+    constexpr std::uint32_t inRange[][2] = {
+        {0x3f000000u, 0x3f860a92u}, {0x3f800000u, 0x00000000u}, {0xbf800000u, 0x40490fdbu}, {0x00000000u, 0x3fc90fdbu},
+    };
+    for (const auto& [input, expected] : inRange) {
+        std::feclearexcept(FE_ALL_EXCEPT);
+        *__error_nid_postfix() = 1234;
+        const std::uint32_t bits = std::bit_cast<std::uint32_t>(acosf_nid_postfix(std::bit_cast<float>(input)));
+        if (bits != expected || *__error_nid_postfix() != 1234 || std::fetestexcept(FE_INVALID) != 0) {
+            std::fprintf(stderr, "Guest acosf failed for %08x: got %08x, errno %d\n", input, bits, *__error_nid_postfix());
+            std::abort();
+        }
+    }
 }
 
 static void CheckFmodfErrno() {
